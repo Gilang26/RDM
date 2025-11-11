@@ -4,52 +4,121 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>TX Inspector (Stable Testnet)</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
 <style>
 body{font-family:Poppins,Arial,sans-serif;background:#0c1410;color:#c9f7d4;
 display:flex;flex-direction:column;align-items:center;justify-content:center;
 min-height:100vh;margin:0;padding:20px}
-.card{background:#101b13;border:1px solid #224a2a;padding:20px;border-radius:14px;width:min(480px,95vw)}
+.card{background:#101b13;border:1px solid #224a2a;padding:20px;border-radius:14px;width:min(520px,95vw)}
 h2{margin-top:0;color:#22c55e;text-align:center}
 input,button{width:100%;padding:12px;margin-top:10px;border-radius:8px;font-size:15px}
 input{border:1px solid #333;background:#0a120d;color:#fff}
 button{background:linear-gradient(90deg,#22c55e,#16a34a);color:#fff;border:0;cursor:pointer;font-weight:700}
-pre{background:#0f1912;color:#9ef7ae;padding:12px;border-radius:8px;white-space:pre-wrap;margin-top:14px}
-footer{text-align:center;font-size:12px;margin-top:10px;color:#84d89f}
+small{color:#92e6a5}
+pre{background:#0f1912;color:#9ef7ae;padding:12px;border-radius:8px;white-space:pre-wrap;margin-top:14px;max-height:50vh;overflow:auto}
 </style>
 </head>
 <body>
 <div class="card">
   <h2>🔍 TX Inspector — Stable Testnet</h2>
-  <input id="txHash" placeholder="Masukkan TX hash (0x...)" />
-  <button onclick="inspect()">Inspect</button>
+  <label>RPC (boleh kosong, akan pakai fallback list):</label>
+  <input id="rpc" placeholder="https://stable-jsonrpc.testnet.chain0.dev" />
+  <label>TX Hash</label>
+  <input id="txHash" placeholder="0x..." />
+  <button id="btnInspect">Inspect</button>
+  <small>Tips: kalau timeout, kosongkan RPC agar pakai fallback, lalu klik lagi.</small>
   <pre id="log">log siap...</pre>
 </div>
-<footer>by thdx</footer>
+
 <script>
-const RPC = "https://stable-jsonrpc.testnet.chain0.dev";
-const provider = new ethers.providers.JsonRpcProvider(RPC);
 const $ = id => document.getElementById(id);
-const log = m => { $("log").textContent += "\n" + m; $("log").scrollTop = $("log").scrollHeight; console.log(m); };
+const log = m => { const el=$('log'); el.textContent += (el.textContent?'\n':'') + m; el.scrollTop = el.scrollHeight; console.log(m); };
+
+// Daftar RPC fallback (isi yang kamu punya/percaya). Tambah jika ada mirror lain.
+const FALLBACK_RPCS = [
+  "https://stable-jsonrpc.testnet.chain0.dev",
+  // Tambahkan mirror lain di sini jika ada:
+  // "https://<mirror-1>",
+  // "https://<mirror-2>",
+];
+
+function validTx(h){ return /^0x[0-9a-fA-F]{64}$/.test(h); }
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+
+async function getReceiptWithRetry(rpc, tx){
+  const provider = new ethers.providers.JsonRpcProvider(rpc, undefined, { timeout: 15000 });
+  // 3x retry dengan backoff 1s, 2s, 3s
+  for(let i=1;i<=3;i++){
+    try{
+      const rc = await provider.getTransactionReceipt(tx);
+      return rc;
+    }catch(e){
+      log(`⚠️ [${i}/3] ${rpc} → ${e.code||'ERR'}: ${e.message||e}`);
+      await sleep(i*1000);
+    }
+  }
+  throw new Error(`Timeout di RPC ${rpc}`);
+}
 
 async function inspect(){
-  const tx = $("txHash").value.trim();
-  if(!/^0x[0-9a-fA-F]{64}$/.test(tx)) return log("⚠️ TX hash tidak valid");
-  try{
-    log("⏳ Fetching receipt...");
-    const rc = await provider.getTransactionReceipt(tx);
-    if(!rc) return log("❓ Receipt belum ditemukan (TX pending / belum confirmed)");
-    log(`✅ Block: ${rc.blockNumber} | Status: ${rc.status===1?"SUCCESS":"FAILED"}`);
-    if(rc.logs.length===0) return log("ℹ️ Tidak ada event di TX ini.");
-    for(const l of rc.logs){
-      try{
-        const iface = new ethers.utils.Interface(["event Transfer(address indexed from,address indexed to,uint256 value)"]);
-        const ev = iface.parseLog(l);
-        log(`💸 Transfer → from: ${ev.args.from}, to: ${ev.args.to}, amount: ${ethers.utils.formatUnits(ev.args.value,6)}`);
-      }catch{}
-    }
-  }catch(e){ log("❌ Error: "+(e.message||e)); }
+  $('log').textContent = '⏳ Fetching receipt...';
+  const tx = $('txHash').value.trim();
+  if(!validTx(tx)) return log('⚠️ TX hash tidak valid');
+
+  // susun list RPC: user → fallback
+  const userRpc = ($('rpc').value.trim() || '').replace(/\s+/g,'');
+  const list = userRpc ? [userRpc, ...FALLBACK_RPCS.filter(r=>r!==userRpc)] : [...FALLBACK_RPCS];
+
+  let receipt=null, used=null, lastErr=null;
+  for(const rpc of list){
+    log(`🔗 Mencoba RPC: ${rpc}`);
+    try{
+      receipt = await getReceiptWithRetry(rpc, tx);
+      used = rpc;
+      break;
+    }catch(e){ lastErr = e; }
+  }
+  if(!receipt){
+    log(`❌ Gagal ambil receipt dari semua RPC. ${lastErr? (lastErr.message||lastErr):''}`);
+    return;
+  }
+
+  if(!receipt){
+    log('❓ Receipt belum ditemukan (pending / RPC belum sinkron).');
+    return;
+  }
+
+  log(`✅ OK dari RPC: ${used}`);
+  log(`Block: ${receipt.blockNumber || '-'} | Status: ${receipt.status===1?'SUCCESS':receipt.status===0?'FAILED':receipt.status}`);
+  log(`Logs: ${receipt.logs? receipt.logs.length : 0}`);
+
+  const transferSig = ethers.utils.id("Transfer(address,address,uint256)");
+  let foundTransfer = false;
+
+  for(const lg of (receipt.logs||[])){
+    try{
+      if(lg.topics && lg.topics[0] === transferSig){
+        const from = ethers.utils.getAddress("0x"+lg.topics[1].slice(26));
+        const to   = ethers.utils.getAddress("0x"+lg.topics[2].slice(26));
+        const raw  = ethers.BigNumber.from(lg.data);
+        log(`\n💸 Transfer @ ${lg.address}`);
+        log(`from: ${from}`);
+        log(`to:   ${to}`);
+        log(`amount raw: ${raw.toString()}`);
+        try{ log(`amount(6):  ${ethers.utils.formatUnits(raw,6)}`); }catch{}
+        try{ log(`amount(18): ${ethers.utils.formatUnits(raw,18)}`); }catch{}
+        foundTransfer = true;
+      }
+    }catch{}
+  }
+
+  if(!foundTransfer){
+    log('\nℹ️ Tidak ada event Transfer di TX ini.\nKemungkinan: lzReceive() tidak mint/transfer token, atau mint ke kontrak lain.');
+  }
 }
+
+$('btnInspect').onclick = inspect;
 </script>
 </body>
 </html>
