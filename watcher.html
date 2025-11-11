@@ -1,69 +1,114 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>LayerZero TX Watcher</title>
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;700&display=swap" rel="stylesheet">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>LayerZero TX Watcher (Auto-Refresh)</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800&display=swap" rel="stylesheet">
 <style>
-  body{margin:0;background:#0e1510;color:#e6f1e8;font-family:'Poppins',sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;flex-direction:column;text-align:center}
-  h1{color:#22c55e;margin-bottom:10px}
-  input{width:90%;max-width:480px;padding:10px;border-radius:10px;border:1px solid #204c2a;background:#111d13;color:#fff;font-size:14px;margin-bottom:10px;text-align:center}
-  button{padding:10px 20px;border-radius:10px;border:0;cursor:pointer;background:linear-gradient(90deg,#22c55e,#16a34a);color:#06110a;font-weight:700}
-  .status{margin-top:20px;font-size:16px}
-  .dot{height:12px;width:12px;border-radius:50%;display:inline-block;margin-right:8px}
-  .inflight{background:#facc15}.delivered{background:#22c55e}.failed{background:#ef4444}
-  footer{position:fixed;bottom:12px;font-size:12px;color:#93b69a}
+  :root {
+    --bg1:#0e1510; --bg2:#0a120b;
+    --card:#101910; --muted:#203520; --field:#0c150d;
+    --acc1:#22c55e; --acc2:#16a34a; --txt:#e8f3e9; --sub:#a9c7af;
+  }
+  body {
+    margin:0; font-family:'Poppins',system-ui,Arial; min-height:100vh;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background: radial-gradient(circle at 20% -20%, var(--bg1), var(--bg2) 60%);
+    color:var(--txt); padding:60px 12px;
+  }
+  .card {
+    width:min(420px,95vw);
+    background:linear-gradient(180deg,rgba(16,25,16,.9),rgba(12,19,12,.9));
+    border:1px solid var(--muted); border-radius:16px; padding:22px;
+    box-shadow:0 12px 24px rgba(0,0,0,.35); text-align:center;
+  }
+  h2{margin:0 0 12px;color:var(--acc1)}
+  input{width:100%;padding:12px;border-radius:10px;border:1px solid var(--muted);background:var(--field);color:#fff;font-size:14px}
+  button{width:100%;margin-top:10px;padding:12px;border:0;border-radius:10px;font-weight:700;cursor:pointer;
+    color:#06110a;background:linear-gradient(90deg,var(--acc1),var(--acc2));transition:.2s}
+  button.secondary{background:#203820;color:#bfe8c2}
+  pre{background:var(--field);border:1px solid var(--muted);border-radius:10px;padding:10px;margin-top:12px;
+    white-space:pre-wrap;font-size:13px;text-align:left;color:#dff8e6;}
+  footer{margin-top:16px;font-size:12px;color:#8fcfa0}
 </style>
 </head>
 <body>
-  <h1>🛰️ LayerZero TX Watcher</h1>
-  <p>Masukkan <b>TX Hash</b> untuk memantau status pengiriman antar chain.</p>
-  <input id="tx" placeholder="0x..." />
-  <button id="startBtn">Mulai Pantau</button>
-
-  <div class="status" id="statusBox">Menunggu input...</div>
-
+<div class="card">
+  <h2>🛰️ LayerZero TX Watcher</h2>
+  <input id="tx" placeholder="Masukkan TX hash (0x...)" />
+  <button id="btnCheck">🔍 Cek Sekali</button>
+  <button id="btnToggle" class="secondary">🛰️ Auto-Poll: OFF</button>
+  <pre id="log">log siap...</pre>
   <footer>by thdx</footer>
+</div>
 
 <script>
 const $ = id => document.getElementById(id);
-let timer=null;
+const log = m => { $("log").textContent += "\n" + m; $("log").scrollTop = $("log").scrollHeight; };
 
-function setStatus(state,msg){
-  const el=$("statusBox");
-  const dot=`<span class="dot ${state}"></span>`;
-  el.innerHTML = dot + msg;
-  console.log(`[${state}] ${msg}`);
-  if(state==="delivered"){ new Audio("https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg").play(); }
+let polling = false, timer = null;
+
+async function fetchText(u){ const r=await fetch(u,{mode:"cors"}); if(!r.ok) throw new Error(`HTTP ${r.status}`); return await r.text(); }
+async function fetchJson(u){ const r=await fetch(u,{mode:"cors"}); if(!r.ok) throw new Error(`HTTP ${r.status}`); return await r.json(); }
+
+async function checkStatus(manual=false){
+  try{
+    if(manual) $("log").textContent="⏳ Mengecek status...";
+    const tx=$("tx").value.trim();
+    if(!/^0x[0-9a-fA-F]{64}$/.test(tx)) return log("⚠️ TX hash tidak valid.");
+
+    const htmlUrls=[
+      `https://testnet.layerzeroscan.com/tx/${tx}`,
+      `https://api.testnet.layerzeroscan.com/tx/${tx}`,
+      `https://api-testnet.layerzeroscan.com/tx/${tx}`
+    ];
+
+    // 1️⃣ coba JSON endpoint dulu
+    for(const api of [
+      `https://api.testnet.layerzeroscan.com/api/tx/${tx}`,
+      `https://api-testnet.layerzeroscan.com/api/tx/${tx}`
+    ]){
+      try{
+        const js = await fetchJson(api);
+        if(js?.status){
+          log(`✅ JSON API: ${api}`);
+          log(`📦 status: ${js.status}`);
+          return;
+        }
+      }catch{}
+    }
+
+    // 2️⃣ fallback ke HTML
+    let html=null;
+    for(const u of htmlUrls){ try{ html=await fetchText(u); break; }catch{} }
+    if(!html){ return log("❌ Gagal fetch dari semua endpoint."); }
+
+    let status="❓ Tidak diketahui / TX belum teregistrasi di LayerZeroScan.";
+    if(/Delivered/i.test(html)) status="✅ Delivered (pesan sudah diterima)";
+    else if(/Inflight/i.test(html)) status="🕐 Inflight (pesan sedang diproses)";
+    else if(/Failed/i.test(html)) status="❌ Failed (pesan gagal / timeout)";
+
+    log(status);
+  }catch(e){ log("❌ Error: "+(e.message||e)); }
 }
 
-async function checkStatus(tx){
-  try{
-    const res = await fetch(`https://testnet.layerzeroscan.com/tx/${tx}`);
-    const html = await res.text();
-    if (html.includes("Delivered")) { setStatus("delivered","✅ Delivered! Pesan sudah tiba di chain tujuan."); return true; }
-    if (html.includes("Failed")) { setStatus("failed","❌ Failed: pesan gagal terkirim."); return true; }
-    if (html.includes("Inflight")) { setStatus("inflight","🟡 Inflight: masih menunggu relayer..."); return false; }
-    setStatus("failed","❓ Tidak diketahui / TX belum teregistrasi di LayerZeroScan.");
-    return false;
-  }catch(e){
-    setStatus("failed","⚠️ Gagal fetch: "+e.message);
-    return false;
+function togglePoll(){
+  polling=!polling;
+  $("btnToggle").textContent = polling ? "🛰️ Auto-Poll: ON (30s)" : "🛰️ Auto-Poll: OFF";
+  $("btnToggle").classList.toggle("secondary", !polling);
+  if(timer){ clearInterval(timer); timer=null; }
+  if(polling){
+    checkStatus(true);
+    timer=setInterval(()=>checkStatus(false), 30000);
+    log("🕒 Auto-poll dimulai, interval 30 detik...");
+  }else{
+    log("🛑 Auto-poll dihentikan.");
   }
 }
 
-$("startBtn").onclick = ()=>{
-  const tx=$("tx").value.trim();
-  if(!/^0x[0-9a-fA-F]{64}$/.test(tx)) return alert("Masukkan TX hash valid (0x + 64 hex).");
-  setStatus("inflight","⏳ Memulai pemantauan...");
-  if(timer){clearInterval(timer);}
-  timer = setInterval(async()=>{
-    const done = await checkStatus(tx);
-    if(done){ clearInterval(timer); }
-  }, 60000); // cek tiap 60 detik
-  checkStatus(tx);
-};
+$("btnCheck").onclick = ()=>checkStatus(true);
+$("btnToggle").onclick = togglePoll;
 </script>
 </body>
 </html>
