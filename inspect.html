@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>TX Inspector (Stable Testnet)</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+<style>
+body{font-family:Poppins,Arial,sans-serif;background:#0c1410;color:#c9f7d4;
+display:flex;flex-direction:column;align-items:center;justify-content:center;
+min-height:100vh;margin:0;padding:20px}
+.card{background:#101b13;border:1px solid #224a2a;padding:20px;border-radius:14px;width:min(480px,95vw)}
+h2{margin-top:0;color:#22c55e;text-align:center}
+input,button{width:100%;padding:12px;margin-top:10px;border-radius:8px;font-size:15px}
+input{border:1px solid #333;background:#0a120d;color:#fff}
+button{background:linear-gradient(90deg,#22c55e,#16a34a);color:#fff;border:0;cursor:pointer;font-weight:700}
+pre{background:#0f1912;color:#9ef7ae;padding:12px;border-radius:8px;white-space:pre-wrap;margin-top:14px}
+footer{text-align:center;font-size:12px;margin-top:10px;color:#84d89f}
+</style>
+</head>
+<body>
+<div class="card">
+  <h2>🔍 TX Inspector — Stable Testnet</h2>
+  <input id="txHash" placeholder="Masukkan TX hash (0x...)" />
+  <button onclick="inspect()">Inspect</button>
+  <pre id="log">log siap...</pre>
+</div>
+<footer>by thdx</footer>
+<script>
+const RPC = "https://stable-jsonrpc.testnet.chain0.dev";
+const provider = new ethers.providers.JsonRpcProvider(RPC);
+const $ = id => document.getElementById(id);
+const log = m => { $("log").textContent += "\n" + m; $("log").scrollTop = $("log").scrollHeight; console.log(m); };
+
+async function inspect(){
+  const tx = $("txHash").value.trim();
+  if(!/^0x[0-9a-fA-F]{64}$/.test(tx)) return log("⚠️ TX hash tidak valid");
+  try{
+    log("⏳ Fetching receipt...");
+    const rc = await provider.getTransactionReceipt(tx);
+    if(!rc) return log("❓ Receipt belum ditemukan (TX pending / belum confirmed)");
+    log(`✅ Block: ${rc.blockNumber} | Status: ${rc.status===1?"SUCCESS":"FAILED"}`);
+    if(rc.logs.length===0) return log("ℹ️ Tidak ada event di TX ini.");
+    for(const l of rc.logs){
+      try{
+        const iface = new ethers.utils.Interface(["event Transfer(address indexed from,address indexed to,uint256 value)"]);
+        const ev = iface.parseLog(l);
+        log(`💸 Transfer → from: ${ev.args.from}, to: ${ev.args.to}, amount: ${ethers.utils.formatUnits(ev.args.value,6)}`);
+      }catch{}
+    }
+  }catch(e){ log("❌ Error: "+(e.message||e)); }
+}
+</script>
+</body>
+</html>
