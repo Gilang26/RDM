@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LayerZero TX Watcher</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;background:#0e1510;color:#e6f1e8;font-family:'Poppins',sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;flex-direction:column;text-align:center}
+  h1{color:#22c55e;margin-bottom:10px}
+  input{width:90%;max-width:480px;padding:10px;border-radius:10px;border:1px solid #204c2a;background:#111d13;color:#fff;font-size:14px;margin-bottom:10px;text-align:center}
+  button{padding:10px 20px;border-radius:10px;border:0;cursor:pointer;background:linear-gradient(90deg,#22c55e,#16a34a);color:#06110a;font-weight:700}
+  .status{margin-top:20px;font-size:16px}
+  .dot{height:12px;width:12px;border-radius:50%;display:inline-block;margin-right:8px}
+  .inflight{background:#facc15}.delivered{background:#22c55e}.failed{background:#ef4444}
+  footer{position:fixed;bottom:12px;font-size:12px;color:#93b69a}
+</style>
+</head>
+<body>
+  <h1>🛰️ LayerZero TX Watcher</h1>
+  <p>Masukkan <b>TX Hash</b> untuk memantau status pengiriman antar chain.</p>
+  <input id="tx" placeholder="0x..." />
+  <button id="startBtn">Mulai Pantau</button>
+
+  <div class="status" id="statusBox">Menunggu input...</div>
+
+  <footer>by thdx</footer>
+
+<script>
+const $ = id => document.getElementById(id);
+let timer=null;
+
+function setStatus(state,msg){
+  const el=$("statusBox");
+  const dot=`<span class="dot ${state}"></span>`;
+  el.innerHTML = dot + msg;
+  console.log(`[${state}] ${msg}`);
+  if(state==="delivered"){ new Audio("https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg").play(); }
+}
+
+async function checkStatus(tx){
+  try{
+    const res = await fetch(`https://testnet.layerzeroscan.com/tx/${tx}`);
+    const html = await res.text();
+    if (html.includes("Delivered")) { setStatus("delivered","✅ Delivered! Pesan sudah tiba di chain tujuan."); return true; }
+    if (html.includes("Failed")) { setStatus("failed","❌ Failed: pesan gagal terkirim."); return true; }
+    if (html.includes("Inflight")) { setStatus("inflight","🟡 Inflight: masih menunggu relayer..."); return false; }
+    setStatus("failed","❓ Tidak diketahui / TX belum teregistrasi di LayerZeroScan.");
+    return false;
+  }catch(e){
+    setStatus("failed","⚠️ Gagal fetch: "+e.message);
+    return false;
+  }
+}
+
+$("startBtn").onclick = ()=>{
+  const tx=$("tx").value.trim();
+  if(!/^0x[0-9a-fA-F]{64}$/.test(tx)) return alert("Masukkan TX hash valid (0x + 64 hex).");
+  setStatus("inflight","⏳ Memulai pemantauan...");
+  if(timer){clearInterval(timer);}
+  timer = setInterval(async()=>{
+    const done = await checkStatus(tx);
+    if(done){ clearInterval(timer); }
+  }, 60000); // cek tiap 60 detik
+  checkStatus(tx);
+};
+</script>
+</body>
+</html>
