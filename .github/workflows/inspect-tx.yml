@@ -1,0 +1,58 @@
+name: Inspect TX (Stable Testnet)
+
+on:
+  workflow_dispatch:
+    inputs:
+      txhash:
+        description: "Masukkan TX hash yang ingin diinspeksi"
+        required: true
+        default: "0x2b0d5161a744eedbc0902c430ca73f88a471ee8d50b00ed2046d25bef3e19308"
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install dependencies
+        run: npm install ethers@5.7.2
+
+      - name: Inspect TX
+        run: |
+          node -e "
+          import { ethers } from 'ethers';
+          const RPCS = [
+            'https://stable-jsonrpc.testnet.chain0.dev',
+            'https://rpc.testnet.stable.galileo.network'
+          ];
+          const hash = process.env.TXHASH;
+          const fs = require('fs');
+          (async () => {
+            for (const rpc of RPCS) {
+              try {
+                console.log('🔗 Trying', rpc);
+                const provider = new ethers.providers.JsonRpcProvider(rpc, undefined, { timeout: 25000 });
+                const rc = await provider.getTransactionReceipt(hash);
+                if (!rc) throw new Error('No receipt found yet');
+                console.log('✅ Block:', rc.blockNumber, '| Status:', rc.status === 1 ? 'SUCCESS' : 'FAILED');
+                fs.writeFileSync('latest-receipt.json', JSON.stringify(rc, null, 2));
+                return;
+              } catch (e) { console.log('⚠️', rpc, e.message); }
+            }
+            console.log('❌ All RPC failed');
+          })();
+          " 
+        env:
+          TXHASH: ${{ github.event.inputs.txhash }}
+
+      - name: Upload result
+        uses: actions/upload-artifact@v4
+        with:
+          name: latest-receipt
+          path: latest-receipt.json
