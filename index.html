@@ -1,225 +1,221 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>🪄 LayerZero Manual Redeem — Final</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Redeem — Auto Build Payload</title>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
 <style>
-  :root{--bg:#0d1511;--card:#111c13;--mut:#214a2f;--fld:#0c1810;--ok1:#22c55e;--ok2:#16a34a;--txt:#e8f3ea;--mutxt:#a7d7be}
-  *{box-sizing:border-box}
-  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 20% -20%,#121c16,#0b130e 60%);font-family:Poppins,system-ui,Arial;color:var(--txt);padding:24px}
-  .card{width:min(520px,96vw);background:var(--card);border:1px solid var(--mut);border-radius:14px;padding:20px;box-shadow:0 10px 26px rgba(0,0,0,.45)}
-  h2{margin:0 0 10px;color:var(--ok1);text-align:center}
-  label{font-size:12px;color:var(--mutxt);margin-top:8px;display:block}
-  input{width:100%;padding:12px;margin-top:6px;border-radius:10px;border:1px solid var(--mut);background:var(--fld);color:#fff;font-size:14px}
-  button{width:100%;padding:12px;margin-top:10px;border:0;border-radius:10px;font-weight:700;cursor:pointer;background:linear-gradient(90deg,var(--ok1),var(--ok2));color:#06110a}
-  .row{display:flex;gap:8px;flex-wrap:wrap}
-  .row > *{flex:1}
-  pre{white-space:pre-wrap;background:#0f1a12;border:1px solid var(--mut);border-radius:10px;padding:12px;margin-top:14px;font-size:13px;color:#c9f3dc;min-height:110px}
-  .hint{font-size:12px;color:var(--mutxt);margin-top:6px}
-  details{margin-top:8px;border:1px dashed var(--mut);border-radius:10px;padding:8px}
-  summary{cursor:pointer;color:#cfeede;font-weight:600}
+  body{font-family:'Poppins',system-ui,Arial;background:#0e1510;color:#e8f3e9;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+  .card{width:min(680px,96vw);background:#0f1a12;border:1px solid #214a2f;border-radius:12px;padding:18px}
+  h2{color:#22c55e;margin:0 0 10px}
+  label{font-size:13px;color:#bfe8c2;margin-top:8px;display:block}
+  input{width:100%;padding:10px;border-radius:8px;border:1px solid #203820;background:#08110a;color:#fff;margin-top:6px}
+  .row{display:flex;gap:8px;margin-top:10px}
+  .row button{flex:1;padding:10px;border-radius:8px;border:0;font-weight:700;cursor:pointer}
+  .primary{background:linear-gradient(90deg,#22c55e,#16a34a);color:#06110a}
+  .muted{background:#233a27;color:#dff6e6}
+  pre{background:#07100a;padding:10px;border-radius:8px;border:1px solid #17381f;margin-top:12px;white-space:pre-wrap}
+  small{color:#a7d7be}
 </style>
 </head>
 <body>
   <div class="card">
-    <h2>🪄 LayerZero Manual Redeem</h2>
+    <h2>🪄 Redeem — Auto-Build Payload</h2>
+
+    <label>Connect Wallet</label>
+    <div class="row">
+      <button id="btnConnect" class="muted">🔌 Connect Wallet</button>
+      <button id="btnSwitch" class="muted">🔁 Switch to Stable (2201)</button>
+    </div>
+    <div id="status" style="margin-top:8px;color:#cfeede">Wallet: - | Chain: -</div>
+
+    <hr style="border:0;border-top:1px solid #183820;margin:12px 0"/>
+
+    <label>Jumlah (USDT0, decimals = 6)</label>
+    <input id="amount" placeholder="contoh: 10" />
+
+    <label>sender32 (bytes32) — kosongkan untuk auto build dari wallet</label>
+    <input id="sender32" placeholder="0x + 64 hex (Auto jika kosong)" />
+
+    <label>payload (hex) — kosongkan untuk auto build</label>
+    <input id="payload" placeholder="0x... (Auto jika kosong)" />
 
     <div class="row">
-      <button id="btnConnect" style="background:#223a23;color:#cfeede">🔌 Connect Wallet</button>
-      <button id="btnRedeem">🚀 Redeem Sekarang</button>
+      <button id="btnAutoBuild" class="primary">🧩 Auto-build sender32 + payload</button>
+      <button id="btnFillSample" class="muted">📎 Fill contoh (10 USDT)</button>
     </div>
-    <div id="status" class="hint">Wallet: - | Chain: -</div>
 
-    <label>TX Hash (Bridge dari Sepolia)</label>
-    <input id="txhash" placeholder="0x... (64 hex)" />
+    <label>srcEid (origin) — default Sepolia: 30101</label>
+    <input id="srcEid" value="30101" />
 
-    <details>
-      <summary>Advanced (opsional)</summary>
-      <div class="row">
-        <div>
-          <label>srcEid (default 30101 — Sepolia)</label>
-          <input id="srcEid" value="30101"/>
-        </div>
-        <div>
-          <label>Executor (utama)</label>
-          <input id="executor" value="0xaB329959fE048721CDF7f13a3eB43e4fc549a9de"/>
-        </div>
-      </div>
-      <label>Fallback executors (pisah koma)</label>
-      <input id="fallback" value="0xcAB8F3ed8528655E0C2fad1C504c6CfEccf50B90"/>
-      <label>sender32 (override manual, opsional)</label>
-      <input id="sender32" placeholder="0x + 64 hex (biarkan kosong untuk auto)"/>
-      <label>payload (override manual, opsional)</label>
-      <input id="payload" placeholder="0x... (biarkan kosong untuk auto)"/>
-    </details>
+    <label>Executor (utama)</label>
+    <input id="executor" value="0xaB329959fE048721CDF7f13a3eB43e4fc549a9de" />
+
+    <label>Fallback (pisah koma)</label>
+    <input id="fallback" value="0xcAB8F3ed8528655E0C2fad1C504c6CfEccf50B90,0x362fca37E45fe1096b42021b543f462D49a5C8df" />
+
+    <div class="row">
+      <button id="btnRedeem" class="primary">🚀 Send lzReceive()</button>
+      <button id="btnPreview" class="muted">🔎 Preview params</button>
+    </div>
 
     <pre id="log">log siap...</pre>
+    <small>Note: jika executor menolak (revert), coba fallback atau tunggu relayer resmi.</small>
   </div>
 
 <script>
-const CFG = {
-  STABLE: { id: 2201, hex: "0x899" },
-  SRC_EID_DEFAULT: 30101,
-  EXECUTORS_DEFAULT: [
-    "0xaB329959fE048721CDF7f13a3eB43e4fc549a9de", // pernah sukses
-    "0xcAB8F3ed8528655E0C2fad1C504c6CfEccf50B90"  // wrapper (fallback)
-  ]
-};
-const LZ_ABI = ["function lzReceive(uint32,bytes32,bytes,address) external"];
+const $ = id => document.getElementById(id);
+const log = (m) => { const el=$("log"); el.textContent += (el.textContent ? "\n" : "") + m; el.scrollTop = el.scrollHeight; console.log(m); };
 
 let provider, signer, me;
 
-const $ = id => document.getElementById(id);
-const log = m => { const el=$("log"); el.textContent += (el.textContent? "\n":"") + m; el.scrollTop = el.scrollHeight; console.log(m); };
-
 async function ensureProvider(){
-  if (!window.ethereum) throw new Error("Wallet tidak ditemukan (MetaMask/OKX/Trust).");
-  if (!provider) provider = new ethers.providers.Web3Provider(window.ethereum, "any");
+  if(!window.ethereum) throw new Error("MetaMask/Wallet not found");
+  if(!provider) provider = new ethers.providers.Web3Provider(window.ethereum,"any");
 }
 
-async function switchStable(){
-  try{
-    await window.ethereum.request({ method:"wallet_switchEthereumChain", params:[{ chainId: CFG.STABLE.hex }] });
-  }catch(e){
-    if(e.code===4902){
-      await window.ethereum.request({ method:"wallet_addEthereumChain", params:[{
-        chainId: CFG.STABLE.hex, chainName:"Stable Testnet",
-        rpcUrls:["https://stable-jsonrpc.testnet.chain0.dev"],
-        blockExplorerUrls:["https://blockscout.testnet.stable.xyz"],
-        nativeCurrency:{ name:"ETH", symbol:"ETH", decimals:18 }
-      }]} );
-    } else { throw e; }
-  }
+function addrTo32(a){
+  // returns 0x + 64 hex
+  const c = ethers.utils.getAddress(a);
+  return "0x" + c.slice(2).padStart(64,"0");
 }
 
 async function connect(){
   try{
     await ensureProvider();
-    await provider.send("eth_requestAccounts",[]);
+    await provider.send("eth_requestAccounts", []);
     signer = provider.getSigner();
     me = await signer.getAddress();
     const net = await provider.getNetwork();
-    if (net.chainId !== CFG.STABLE.id){ await switchStable(); }
-    const n2 = await provider.getNetwork();
-    $("status").textContent = `Wallet: ${me.slice(0,6)}…${me.slice(-4)} | Chain: ${n2.chainId}`;
-    log(`✅ Connected: ${me}\nChain: ${n2.chainId}`);
-  }catch(e){ log("❌ Connect error: "+(e.message||e)); }
+    $("status").textContent = `Wallet: ${me} | Chain: ${net.chainId}`;
+    log(`✅ Connected: ${me} (chain ${net.chainId})`);
+  }catch(e){ log("❌ Connect error: " + (e.message || e)); }
 }
 
-function addrTo32(a){ const c=ethers.utils.getAddress(a); return "0x"+c.slice(2).padStart(64,"0"); }
-
-function extractFromText(html){
-  const hexes = (html.match(/0x[0-9a-fA-F]{64,}/g) || []);
-  const uniq = [...new Set(hexes)];
-  const out = { sender32:null, payload:null };
-  const senders = uniq.filter(h => h.length===66);
-  if (senders.length) out.sender32 = senders[0];
-  const payloads = uniq.filter(h => h.length>66 && h.length%2===0);
-  if (payloads.length) out.payload = payloads[0];
-  return out;
-}
-
-async function fetchLayerZero(tx){
-  // coba JSON → fallback HTML
-  const urls = [
-    `https://api.testnet.layerzeroscan.com/tx/${tx}`,
-    `https://testnet.layerzeroscan.com/tx/${tx}`,
-    `https://api-testnet.layerzeroscan.com/tx/${tx}`
-  ];
-  for(const u of urls){
-    try{
-      const r = await fetch(u,{mode:"cors"});
-      if(!r.ok) continue;
-      const text = await r.text();
-      const res = extractFromText(text);
-      if(res.sender32 || res.payload) return res;
-    }catch{}
+async function switchStable(){
+  try{
+    await ensureProvider();
+    await window.ethereum.request({ method:"wallet_switchEthereumChain", params:[{ chainId:"0x899" }] });
+    log("🔁 Switched to Stable (2201)");
+  }catch(e){
+    if(e.code === 4902){
+      await window.ethereum.request({ method:"wallet_addEthereumChain", params:[{
+        chainId:"0x899", chainName:"Stable Testnet",
+        rpcUrls:["https://stable-jsonrpc.testnet.chain0.dev"],
+        blockExplorerUrls:["https://blockscout.testnet.stable.xyz"],
+        nativeCurrency:{ name:"ETH", symbol:"ETH", decimals:18 }
+      }]});
+      log("➕ Added & switched to Stable");
+    } else { log("⚠️ Switch error: " + (e.message||e)); }
   }
-  return { sender32:null, payload:null };
+}
+
+async function autoBuildPayload(){
+  try{
+    if(!signer) await connect();
+    const amt = $("amount").value.trim();
+    if(!amt) return log("⚠️ Masukkan jumlah (ex: 10).");
+    // parseUnits with decimals 6
+    const amountLD = ethers.utils.parseUnits(amt, 6);
+    const to = me;
+    const sender32 = addrTo32(me);
+    const payload = ethers.utils.defaultAbiCoder.encode(["address","uint256"], [ethers.utils.getAddress(to), amountLD]);
+    $("sender32").value = sender32;
+    $("payload").value = payload;
+    log("🧩 Auto-build sukses:");
+    log("sender32: " + sender32);
+    log("payload: " + payload);
+    log("amountLD: " + amountLD.toString());
+  }catch(e){
+    log("❌ Auto-build error: " + (e.message || e));
+  }
+}
+
+function fillSample10(){
+  $("amount").value = "10";
+  // do not auto build until button pressed
+  log("📎 Sample 10 USDT filled. Tekan Auto-build untuk buat payload.");
 }
 
 function normalizeExecutors(){
-  const list = [];
   const main = $("executor").value.trim();
   const fb = $("fallback").value.trim();
-  if (main) list.push(main);
-  if (fb) list.push(...fb.split(",").map(s=>s.trim()).filter(Boolean));
-  if (!list.length) list.push(...CFG.EXECUTORS_DEFAULT);
-  // checksum & dedup
+  const arr = [];
+  if(main) arr.push(main);
+  if(fb) arr.push(...fb.split(",").map(s=>s.trim()).filter(Boolean));
+  // checksum normalize
   const out = [];
-  for(const e of list){
-    try{
-      const ce = ethers.utils.getAddress(e);
-      if(!out.includes(ce)) out.push(ce);
-    }catch{}
+  for(const a of arr){
+    try{ out.push(ethers.utils.getAddress(a)); }catch{}
   }
-  return out.length ? out : CFG.EXECUTORS_DEFAULT;
+  return out;
 }
 
-async function redeem(){
+async function previewParams(){
+  try{
+    const srcEid = Number($("srcEid").value.trim() || 30101);
+    const sender32 = $("sender32").value.trim();
+    const payload = $("payload").value.trim();
+    const exs = normalizeExecutors();
+    log("🔎 Preview:");
+    log("srcEid: " + srcEid);
+    log("sender32: " + (sender32 || "(kosong)"));
+    log("payload: " + (payload ? payload.slice(0,66)+"..." : "(kosong)"));
+    log("executors: " + JSON.stringify(exs));
+  }catch(e){ log("❌ Preview error: " + (e.message||e)); }
+}
+
+async function sendRedeem(){
   try{
     if(!signer) await connect();
-
-    // ensure stable
     const net = await provider.getNetwork();
-    if (net.chainId !== CFG.STABLE.id){ log("🔁 Switch ke Stable..."); await switchStable(); }
-
-    const tx = $("txhash").value.trim();
-    if(!/^0x[0-9a-fA-F]{64}$/.test(tx)) return log("⚠️ TX hash tidak valid.");
-
-    const srcEid = Number(($("srcEid").value.trim() || CFG.SRC_EID_DEFAULT));
-
-    // ambil advance override
+    if(net.chainId !== 2201){
+      log("🔁 Mengalihkan ke Stable (2201)...");
+      await switchStable();
+    }
+    const srcEid = Number($("srcEid").value.trim() || 30101);
     let sender32 = $("sender32").value.trim();
-    let payload  = $("payload").value.trim();
+    let payload = $("payload").value.trim();
 
     if(!sender32 || !payload){
-      log("⏳ Fetching LayerZeroScan...");
-      const r = await fetchLayerZero(tx);
-      if(!sender32 && r.sender32) sender32 = r.sender32;
-      if(!payload  && r.payload)  payload  = r.payload;
-      if(!r.sender32 || !r.payload) log("⚠️ Data belum lengkap dari LZScan (sender/payload).");
+      log("⚠️ sender32 atau payload kosong — mencoba auto-build (pakai wallet & amount)...");
+      await autoBuildPayload();
+      sender32 = $("sender32").value.trim();
+      payload = $("payload").value.trim();
+      if(!sender32 || !payload) return log("❌ Gagal auto-build payload.");
     }
 
-    // fallback build (last resort)
-    if(!sender32){ sender32 = addrTo32(me); log("🧩 Auto-build sender32 dari wallet."); }
-    if(!payload){
-      // payload minimal: encode(to, amount) → amount=0 (placeholder)
-      const enc = ethers.utils.defaultAbiCoder.encode(["address","uint256"], [me, ethers.constants.Zero]);
-      payload = enc;
-      log("🧩 Auto-build payload placeholder (to=wallet, amount=0).");
-    }
-
-    // log ringkas
-    log(`👤 sender32: ${sender32}`);
-    log(`📦 payload: ${payload.slice(0,66)}...`);
-
-    // try multi-executor
     const executors = normalizeExecutors();
+    if(!executors.length) return log("⚠️ Executor tidak terisi.");
+    // try each executor until success
     for(const ex of executors){
       try{
-        const c = new ethers.Contract(ex, LZ_ABI, signer);
-        log(`🚀 lzReceive via ${ex} ...`);
-        const txSend = await c.lzReceive(srcEid, sender32, payload, ex, { gasLimit: 700000 });
-        log(`⏳ TX: ${txSend.hash}`);
-        const rc = await txSend.wait();
-        log(`✅ Redeem selesai di block ${rc.blockNumber} (executor: ${ex})`);
+        log(`🚀 Mencoba lzReceive() via ${ex} ...`);
+        const c = new ethers.Contract(ex, ["function lzReceive(uint32,bytes32,bytes,address) external"], signer);
+        const tx = await c.lzReceive(srcEid, sender32, payload, ex, { gasLimit: 800000 });
+        log("⏳ TX: " + tx.hash);
+        const rc = await tx.wait();
+        log("✅ Redeem success @ block " + rc.blockNumber + " via " + ex);
         return;
       }catch(e){
         log(`⚠️ Executor fail @ ${ex}: ${e.data?.message || e.message || e}`);
       }
     }
-    log("❌ Semua executor gagal. Kemungkinan kontrak membatasi caller (relayer-only) atau payload belum siap.");
+    log("❌ Semua executor gagal. Mungkin kontrak hanya menerima relayer resmi atau payload belum deliverable.");
   }catch(e){
     log("❌ Redeem error: " + (e.data?.message || e.message || e));
   }
 }
 
+// bind
 $("btnConnect").onclick = connect;
-$("btnRedeem").onclick  = redeem;
+$("btnSwitch").onclick  = switchStable;
+$("btnAutoBuild").onclick = autoBuildPayload;
+$("btnFillSample").onclick = fillSample10;
+$("btnPreview").onclick = previewParams;
+$("btnRedeem").onclick = sendRedeem;
 </script>
 </body>
 </html>
